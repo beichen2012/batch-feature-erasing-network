@@ -49,9 +49,10 @@ class ResNetEvaluator:
         for inputs0, inputs1 in zip(queryloader, queryFliploader):
             inputs, pids, camids = self._parse_data(inputs0)
             feature0 = self._forward(inputs)
-            inputs, pids, camids = self._parse_data(inputs1)
-            feature1 = self._forward(inputs)
-            qf.append((feature0 + feature1) / 2.0)
+            #inputs, pids, camids = self._parse_data(inputs1)
+            #feature1 = self._forward(inputs)
+            #qf.append((feature0 + feature1) / 2.0)
+            qf.append(feature0)
             
             q_pids.extend(pids)
             q_camids.extend(camids)
@@ -65,9 +66,10 @@ class ResNetEvaluator:
         for inputs0, inputs1 in zip(galleryloader, galleryFliploader):
             inputs, pids, camids = self._parse_data(inputs0)
             feature0 = self._forward(inputs)
-            inputs, pids, camids = self._parse_data(inputs1)
-            feature1 = self._forward(inputs)
-            gf.append((feature0 + feature1) / 2.0)
+            #inputs, pids, camids = self._parse_data(inputs1)
+            #feature1 = self._forward(inputs)
+            #gf.append((feature0 + feature1) / 2.0)
+            gf.append(feature0)
             g_pids.extend(pids)
             g_camids.extend(camids)
         gf = torch.cat(gf, 0)
@@ -84,6 +86,7 @@ class ResNetEvaluator:
         q_g_dist.addmm_(1, -2, qf, gf.t())
 
         if re_ranking:
+            print("Re ranking...")
             q_q_dist = torch.pow(qf, 2).sum(dim=1, keepdim=True).expand(m, m) + \
                 torch.pow(qf, 2).sum(dim=1, keepdim=True).expand(m, m).t()
             q_q_dist.addmm_(1, -2, qf, qf.t())
