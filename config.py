@@ -11,6 +11,7 @@ class DefaultConfig(object):
     datatype = 'person'
     mode = 'retrieval'
     # optimization options
+    softmax = "softmax"
     loss = 'triplet'
     optim = 'adam'
     max_epoch = 60

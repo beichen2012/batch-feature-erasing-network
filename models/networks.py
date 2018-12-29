@@ -36,7 +36,7 @@ def weights_init_classifier(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
         nn.init.normal_(m.weight, std=0.001)
-        if m.bias:
+        if m.bias is not None:
             nn.init.constant_(m.bias, 0.0)
 
 class SELayer(nn.Module):
@@ -251,6 +251,8 @@ class BFE(nn.Module):
         ]
         return params
 
+
+
 class Resnet(nn.Module):
     def __init__(self, num_classes, resnet=None):
         super(Resnet, self).__init__()
@@ -318,3 +320,64 @@ class IDE(nn.Module):
 
     def get_optim_policy(self):
         return self.parameters()
+
+
+class L2Norm0(nn.Module):
+    def __init__(self):
+        super(L2Norm0, self).__init__()
+
+    def forward(self, input):
+        buffer = torch.pow(input, 2)
+
+        normp = torch.sum(buffer, 0).add_(1e-10)
+        norm = torch.sqrt(normp)
+
+        output = torch.div(input, norm)
+        return output
+
+class Res50AMSoftmax(nn.Module):
+    in_planes = 2048
+
+    def __init__(self, num_classes=None, last_stride=1, pretrained=False):
+        super(Res50AMSoftmax, self).__init__()
+        self.base = ResNet(last_stride)
+        if pretrained:
+            model_url = 'https://download.pytorch.org/models/resnet50-19c8e357.pth'
+            self.base.load_param(model_zoo.load_url(model_url))
+
+        self.num_classes = num_classes
+
+        self.bottleneck = nn.Sequential(
+            nn.Linear(self.in_planes, 2048),
+            nn.BatchNorm1d(2048),
+            nn.LeakyReLU(0.1),
+            nn.Dropout(p=0.5)
+        )
+        self.L2Norm = L2Norm0()
+        self.bottleneck.apply(weights_init_kaiming)
+        self.classifier = nn.Linear(2048, self.num_classes)
+        self.classifier.apply(weights_init_classifier)
+
+    def forward(self, x):
+        global_feat = self.base(x)
+        global_feat = F.avg_pool2d(global_feat, global_feat.shape[2:])  # (b, 2048, 1, 1)
+        global_feat = global_feat.view(global_feat.shape[0], -1)
+        feat = self.bottleneck(global_feat)
+        feat = self.L2Norm(feat)
+        if self.training:
+            cls_score = self.classifier(feat)
+            return [], [cls_score]
+        return feat
+
+    def get_optim_policy(self):
+        base_param_group = self.base.parameters()
+        if self.num_classes is not None:
+            add_param_group = itertools.chain(self.bottleneck.parameters(), self.classifier.parameters())
+            return [
+                {'params': base_param_group},
+                {'params': add_param_group}
+            ]
+        else:
+            return [
+                {'params': base_param_group}
+            ]

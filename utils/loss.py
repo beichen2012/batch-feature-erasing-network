@@ -97,6 +97,28 @@ def hard_example_mining(dist_mat, labels, margin, return_inds=False):
 
     return dist_ap, dist_an
 
+class AMSoftmax(nn.Module):
+    def __init__(self, scale=30.0, margin=0.35):
+        super(AMSoftmax, self).__init__()
+        self.scale = scale
+        self.margin = margin
+
+    def forward(self, input, target):
+        y = target.view(-1, 1)
+        index = input * 0.0
+        index.scatter_(1, y, 1)
+        index = index.byte()
+
+        prob = input[index] > self.margin
+        input[index][prob] -= self.margin
+
+        input *= self.scale
+
+        loss = F.cross_entropy(input, target)
+        return loss
+
+
+
 
 class TripletLoss(object):
     """Modified from Tong Xiao's open-reid (https://github.com/Cysu/open-reid).

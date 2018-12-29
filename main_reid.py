@@ -3,6 +3,7 @@ import os
 import sys
 from os import path as osp
 from pprint import pprint
+import time
 
 import numpy as np
 import torch
@@ -15,10 +16,10 @@ from config import opt
 from datasets import data_manager
 from datasets.data_loader import ImageData
 from datasets.samplers import RandomIdentitySampler
-from models.networks import ResNetBuilder, IDE, Resnet, BFE
+from models.networks import ResNetBuilder, IDE, Resnet, BFE, Res50AMSoftmax
 from trainers.evaluator import ResNetEvaluator
 from trainers.trainer import cls_tripletTrainer
-from utils.loss import CrossEntropyLabelSmooth, TripletLoss, Margin
+from utils.loss import CrossEntropyLabelSmooth, TripletLoss, Margin, AMSoftmax
 from utils.LiftedStructure import LiftedStructureLoss
 from utils.DistWeightDevianceLoss import DistWeightBinDevianceLoss
 from utils.serialization import Logger, save_checkpoint
@@ -32,7 +33,8 @@ def train(**kwargs):
     torch.manual_seed(opt.seed)
     os.makedirs(opt.save_dir, exist_ok=True)
     use_gpu = torch.cuda.is_available()
-    sys.stdout = Logger(osp.join(opt.save_dir, 'log_train.txt'))
+    sys.stdout = Logger(osp.join(opt.save_dir, 'log_train-{}.txt'.format(time.strftime(
+        "%Y%m%d0%H%M%S"), time.localtime)))
 
     print('=========user config==========')
     pprint(opt._state_dict())
@@ -93,6 +95,8 @@ def train(**kwargs):
         model = IDE(dataset.num_train_pids)
     elif opt.model_name == 'resnet':
         model = Resnet(dataset.num_train_pids)
+    elif opt.model_name == "amsoftmax":
+        model = Res50AMSoftmax(dataset.num_train_pids, 1, True)
  
     optim_policy = model.get_optim_policy()
 
@@ -114,7 +118,10 @@ def train(**kwargs):
         return
 
     #xent_criterion = nn.CrossEntropyLoss()
-    xent_criterion = CrossEntropyLabelSmooth(dataset.num_train_pids)
+    if opt.softmax == "softmax":
+        xent_criterion = CrossEntropyLabelSmooth(dataset.num_train_pids)
+    elif opt.softmax == "amsoftmax":
+        xent_criterion = AMSoftmax(scale=80)
 
     if opt.loss == 'triplet':
         embedding_criterion = TripletLoss(opt.margin)
@@ -122,6 +129,7 @@ def train(**kwargs):
         embedding_criterion = LiftedStructureLoss(hard_mining=True)
     elif opt.loss == 'weight':
         embedding_criterion = Margin()
+
 
     def criterion(triplet_y, softmax_y, labels):
         losses = [embedding_criterion(output, labels)[0] for output in triplet_y] + \
@@ -163,7 +171,8 @@ def train(**kwargs):
             if opt.mode == 'class':
                 rank1 = test(model, queryloader) 
             else:
-                rank1 = reid_evaluator.evaluate(queryloader, galleryloader, queryFliploader, galleryFliploader)
+                rank1 = reid_evaluator.evaluate(queryloader, galleryloader, queryFliploader, galleryFliploader,
+                                                re_ranking=opt.re_ranking)
             is_best = rank1 > best_rank1
             if is_best:
                 best_rank1 = rank1
