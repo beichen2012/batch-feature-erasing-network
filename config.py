@@ -11,7 +11,7 @@ class DefaultConfig(object):
     datatype = 'person'
     mode = 'retrieval'
     # optimization options
-    softmax = "softmax"
+    softmax = "softmax"   # softmax amsoftmax
     loss = 'triplet'
     optim = 'adam'
     max_epoch = 60
@@ -32,7 +32,7 @@ class DefaultConfig(object):
     re_ranking = False
 
     # model options
-    model_name = 'bfe'  # triplet, softmax_triplet, bfe, ide
+    model_name = 'bfe'  # triplet, softmax_triplet, bfe, ide, res18, res34
     last_stride = 1
     pretrained_model = None
     

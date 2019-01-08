@@ -12,7 +12,7 @@ from sklearn.preprocessing import normalize
 from torch import nn, optim
 from torch.utils.data import dataloader
 from torchvision import transforms
-from torchvision.models.resnet import Bottleneck, resnet50
+from torchvision.models.resnet import BasicBlock, Bottleneck, resnet50, resnet18, resnet34
 from torchvision.transforms import functional
 
 from .resnet import ResNet
@@ -370,14 +370,93 @@ class Res50AMSoftmax(nn.Module):
         return feat
 
     def get_optim_policy(self):
-        base_param_group = self.base.parameters()
-        if self.num_classes is not None:
-            add_param_group = itertools.chain(self.bottleneck.parameters(), self.classifier.parameters())
-            return [
-                {'params': base_param_group},
-                {'params': add_param_group}
-            ]
+        params = [
+            {'params': self.base.parameters()},
+            {'params': self.bottleneck.parameters()},
+            {'params': self.L2Norm.parameters()},
+            {'params': self.classifier.parameters()},
+        ]
+        return params
+
+
+class ResnetBaseLine(nn.Module):
+    def __init__(self, layers=18, last_stride=1, num_classes=None):
+        super(ResnetBaseLine, self).__init__()
+        resnet = None
+        layer4 = None
+        inplanes = 512
+        if layers == 18:
+            resnet = resnet18(pretrained=True)
+            layer4 = nn.Sequential(
+                BasicBlock(256, 512, stride=last_stride, downsample=nn.Sequential(
+                    nn.Conv2d(256, 512, kernel_size=1, stride=last_stride, bias=False),
+                    nn.BatchNorm2d(512))),
+                BasicBlock(512, 512, stride=last_stride)
+            )
+        elif layers == 34:
+            resnet = resnet34(pretrained=True)
+            layer4 = nn.Sequential(
+                BasicBlock(256, 512, stride=last_stride, downsample=nn.Sequential(
+                    nn.Conv2d(256, 512, kernel_size=1, stride=last_stride, bias=False),
+                    nn.BatchNorm2d(512))),
+                BasicBlock(512, 512, stride=last_stride),
+                BasicBlock(512, 512, stride=last_stride)
+            )
         else:
-            return [
-                {'params': base_param_group}
-            ]
+            resnet = resnet50(pretrained=True)
+            layer4 = nn.Sequential(
+                Bottleneck(1024, 512, stride=last_stride, downsample=nn.Sequential(
+                    nn.Conv2d(1024, 2048, kernel_size=1, stride=last_stride, bias=False),
+                    nn.BatchNorm2d(2048)
+                )),
+                Bottleneck(2048, 512),
+                Bottleneck(2048, 512)
+            )
+            inplanes = 2048
+
+        self.backbone = nn.Sequential(
+            resnet.conv1,
+            resnet.bn1,
+            resnet.relu,
+            resnet.maxpool,
+
+            resnet.layer1,
+            resnet.layer2,
+            resnet.layer3,
+        )
+
+        # last_stride
+        self.layer4 = layer4
+        self.layer4.load_state_dict(resnet.layer4.state_dict())
+
+        # gap
+        self.gap = nn.AdaptiveAvgPool2d((1,1))
+
+        self.num_classes = num_classes
+
+        self.bottleneck = nn.BatchNorm1d(inplanes)
+        self.classifier = nn.Linear(inplanes, self.num_classes, bias=False)
+    def get_optim_policy(self):
+        params = [
+            {'params': self.backbone.parameters()},
+            {'params': self.layer4.parameters()},
+            {'params': self.gap.parameters()},
+            {'params': self.bottleneck.parameters()},
+            {'params': self.classifier.parameters()},
+        ]
+        return params
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.layer4(x)
+        gf = self.gap(x)
+
+        gf = gf.view(gf.size(0), -1)
+        feat = self.bottleneck(gf)
+        if self.training:
+            conf = self.classifier(feat)
+            return [gf],[conf]
+        else:
+            return feat
+
+

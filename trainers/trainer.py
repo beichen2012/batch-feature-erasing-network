@@ -34,6 +34,7 @@ class cls_tripletTrainer:
             self._forward()
             self.optimizer.zero_grad()
             self._backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 120.0)
             self.optimizer.step()
 
             batch_time.update(time.time() - start)

@@ -16,7 +16,7 @@ from config import opt
 from datasets import data_manager
 from datasets.data_loader import ImageData
 from datasets.samplers import RandomIdentitySampler
-from models.networks import ResNetBuilder, IDE, Resnet, BFE, Res50AMSoftmax
+from models.networks import ResNetBuilder, IDE, Resnet, BFE, Res50AMSoftmax, ResnetBaseLine
 from trainers.evaluator import ResNetEvaluator
 from trainers.trainer import cls_tripletTrainer
 from utils.loss import CrossEntropyLabelSmooth, TripletLoss, Margin, AMSoftmax
@@ -97,6 +97,10 @@ def train(**kwargs):
         model = Resnet(dataset.num_train_pids)
     elif opt.model_name == "amsoftmax":
         model = Res50AMSoftmax(dataset.num_train_pids, 1, True)
+    elif opt.model_name == "res18":
+        model = ResnetBaseLine(18, 1, dataset.num_train_pids)
+    elif opt.model_name == "res34":
+        model = ResnetBaseLine(34, 1, dataset.num_train_pids)
  
     optim_policy = model.get_optim_policy()
 
@@ -121,7 +125,7 @@ def train(**kwargs):
     if opt.softmax == "softmax":
         xent_criterion = CrossEntropyLabelSmooth(dataset.num_train_pids)
     elif opt.softmax == "amsoftmax":
-        xent_criterion = AMSoftmax(scale=80)
+        xent_criterion = AMSoftmax(scale=30)
 
     if opt.loss == 'triplet':
         embedding_criterion = TripletLoss(opt.margin)
